@@ -1,0 +1,387 @@
+#!groovy
+
+env.Version_ID = params.Version_ID
+env.Build_ID = params.Build_ID
+env.Stack_Name = params.Stack_Name
+env.App_Name = params.App_Name
+env.env_name = env.JOB_NAME.substring(env.JOB_NAME.lastIndexOf("-") + 1).toLowerCase()
+env.MULE_switch = false
+
+
+if (env.env_name =~ /dev/ || (env.env_name == "qa" && env.Stack_Name == "bae")) {
+  env.MULE_switch = true
+  env.Chef_shared_mule_license_Search = "chef_environment:use1dev*bae OR chef_environment:use1qa-bae"
+}
+if (env.Stack_Name == "hf") {
+  env.MULE_switch = true
+  env.Chef_shared_mule_license_Search = " chef_environment:use1*hf"
+}
+
+if ( env.Stack_Name =~ /Prod/ ) {
+  error 'you are not allowed to use this environment'
+}
+
+// CAP -- Mail DL/email id list needs to be added t ena.Mail_list
+
+if (env.JOB_NAME.contains("Stream12-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream5-UAT") || env.JOB_NAME.contains("Stream1-UAT")) {
+   env.Mail_list=""
+ }  else if ( env.JOB_NAME.contains("Stream22-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream24-UAT")) {
+   env.Mail_list="t"
+ } else if ( env.JOB_NAME.contains("Stream6-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream25-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream13-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream2-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream8-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream14-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream16-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream19-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream20-UAT")) {
+   env.Mail_list=""
+ } else if ( env.JOB_NAME.contains("Stream10-UAT")) {
+   env.Mail_list=""
+ } else {
+    env.Mail_list=""
+ }
+
+node {
+  currentBuild.description = "${Version_ID}-${Build_ID} ⇨ ${Stack_Name}-${App_Name}"
+
+  // Wipe the workspace so we are building completely clean
+  deleteDir()
+
+  // ANSI color codes
+  env.Green='\u001B[32m'
+  env.Red='\u001B[31m'
+  env.Bold='\u001B[1m'
+  env.Reset='\u001B[0m'
+
+  if ( !(params.Version_ID) || !(params.Build_ID) || !(params.Stack_Name) || !(params.App_Name) ) {
+    wrap([$class: 'AnsiColorBuildWrapper']) {
+      println "${red}Please specify all the parameters!${reset}"
+      error()
+    }
+  }
+
+  env.Repo_Name="public"
+
+  properties([
+    parameters([
+      string(name: 'Version_ID', defaultValue: env.Version_ID, description: 'Package version ID e.g: 17.1.0-SNAPSHOT'),
+      string(name: 'Build_ID', defaultValue: env.Build_ID, description: 'Package build ID e.g: 1'),
+      // choice(name: 'Nexus_Repo', choices: env.Repo_Name, description: 'NexUs Repo is env.Repo_Name'),
+      choice(name: 'Stack_Name', choices: env.Stack_Name, description: 'Stack Name e.g: stream1'),
+      choice(name: 'App_Name', choices: "All\nAEM\nAPI\n", description: 'Application Name e.g: AEM (Author and Publisher) API (Mule and Tomcat)')
+    ])
+  ])
+  try {
+    notifyBuild('STARTED')
+
+  // Check if build exist in Nexus
+  stage('Check Build on Nexus') {
+    wrap([$class: 'AnsiColorBuildWrapper']) {
+      println "${bold}Check Build on Nexus: ${green}Checking the Nexus for build ${Version_ID}-${BUILD_ID} ${reset}"
+      sh '''
+        set +x
+        if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+          if ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-id-aem&v=build-${BUILD_ID}-${Version_ID}&p=zip" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-id-aem doesn't exist on the Nexus ${Repo_Name} --- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-id-aem&v=build-${BUILD_ID}-${Version_ID}&p=zip"
+            exit 1
+          elif ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-website&v=build-${BUILD_ID}-${Version_ID}&p=zip" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-website doesn't exist on the Nexus ${Repo_Name}--- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-website&v=build-${BUILD_ID}-${Version_ID}&p=zip"
+            exit 1
+          fi
+        elif [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+          if ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-mule-accessories&v=build-${BUILD_ID}-${Version_ID}&p=zip" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-mule-accessories doesn't exist on the Nexus ${Repo_Name} --- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-mule-accessories&v=build-${BUILD_ID}-${Version_ID}&p=zip"
+            exit 1
+          elif ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-mule-specs&v=build-${BUILD_ID}-${Version_ID}&p=zip" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-mule-specs doesn't exist on the Nexus ${Repo_Name} --- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-mule-specs&v=build-${BUILD_ID}-${Version_ID}&p=zip"
+            exit 1
+          elif ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-api-authorisation&v=build-${BUILD_ID}-${Version_ID}&p=war" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-api-authorisation doesn't exist on the Nexus ${Repo_Name} --- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-api-authorisation&v=build-${BUILD_ID}-${Version_ID}&p=war"
+            exit 1
+          elif ! [[ `wget -S --spider --http-user=configurationmanagement --http-password=TNaF204XeQu08g8 "https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-api-bundle&v=build-${BUILD_ID}-${Version_ID}&p=war" 2>&1 | grep 'HTTP/1.1 200 OK'` ]]; then
+            echo "${Red} --- The ${Version_ID} #${BUILD_ID} helios-api-bundle doesn't exist on the Nexus ${Repo_Name} --- ${Reset}"
+            echo "${bold} --- Repo URL:${Reset} https://nexus-cm.helios-aws.com/service/local/artifact/maven/redirect?r=${Repo_Name}&g=com.digitaslbi.helios&a=helios-api-bundle&v=build-${BUILD_ID}-${Version_ID}&p=war"
+            exit 1
+          fi
+        fi
+      '''
+    }
+  }
+
+  // AEM-Stack|API-Stack
+  env.Chef_Node_Search = 'chef_environment:' + 'use1' + env.env_name + '*' + env.Stack_Name + ' AND name:*' + env.Stack_Name + '*'
+
+  stage('Checkout') {
+    wrap([$class: 'AnsiColorBuildWrapper']) {
+      println "${bold}Checkout: ${green}Checkout the configuration repository ${reset}"
+      // Checkout configuration repository
+      checkout changelog: false, poll: false, scm: [$class: 'GitSCM', branches: [[name: '*/master']],
+      doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'WipeWorkspace']], submoduleCfg: [],
+      userRemoteConfigs: [[credentialsId: '97c54a1a-01f7-44f1-88b8-b88740cd3d1a', url: 'https://gitlab.helios-aws.com/helios/ops/configuration.git']]]
+    }
+  }
+
+  stage('Install Bundles and Update Databag') {
+    withEnv(["PATH=/var/lib/jenkins/.rbenv/shims:/var/lib/jenkins/.rbenv/bin:/var/lib/jenkins/.rbenv/plugins/ruby_build/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin"]) {
+      wrap([$class: 'AnsiColorBuildWrapper']) {
+        println "${bold}Install Bundles and Update Databag: ${green}Installing Chef bundles ${reset}"
+        sh '''
+          set +x
+          cd chef-server
+          BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle install --path /var/lib/jenkins/pipelines-bundle-path
+          rbenv rehash
+        '''
+
+        // Push databag changes to chef server
+        println "${bold}Install Bundles and Update Databag: ${green}Updating the Chef server ${Stack_Name} Databag with build ${Version_ID}-${BUILD_ID} ${reset}"
+        sh '''
+          set +x
+          cd chef-server
+          envs=( use1"${env_name}" )
+          for env in "${envs[@]}"; do
+            if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+              BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife exec ../helios-pipeline/set_packages_data_bag.rb author $env-${Stack_Name} ${Version_ID} ${BUILD_ID} || exit 1
+              BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife exec ../helios-pipeline/set_packages_data_bag.rb publish $env-${Stack_Name} ${Version_ID} ${BUILD_ID} || exit 1
+            fi
+            if [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+              BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife exec ../helios-pipeline/set_packages_data_bag.rb helios-api $env-${Stack_Name} ${Version_ID} ${BUILD_ID} || exit 1
+              BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife exec ../helios-pipeline/set_packages_data_bag.rb mule-esb $env-${Stack_Name} ${Version_ID} ${BUILD_ID} || exit 1
+            fi
+          done
+        '''
+
+        // Commit and Push "version_id and build_id" change to databag in git configuration repo
+        println "${bold}Install Bundles and Update Databag: ${green}Downloading the ${Stack_Name} Databags changes from Chef server ${reset}"
+        sh '''
+          set +x
+          cd chef
+          envs=( use1"${env_name}" )
+          for env in "${envs[@]}"; do
+            if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+              BUNDLE_GEMFILE=../chef-server/Gemfile_for_knife_pipeline bundle exec knife download data_bags/$env-${Stack_Name}/author.json --chef-repo-path .
+              BUNDLE_GEMFILE=../chef-server/Gemfile_for_knife_pipeline bundle exec knife download data_bags/$env-${Stack_Name}/publish.json --chef-repo-path .
+            fi
+            if [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+              BUNDLE_GEMFILE=../chef-server/Gemfile_for_knife_pipeline bundle exec knife download data_bags/$env-${Stack_Name}/helios-api.json --chef-repo-path .
+              BUNDLE_GEMFILE=../chef-server/Gemfile_for_knife_pipeline bundle exec knife download data_bags/$env-${Stack_Name}/mule-esb.json --chef-repo-path .
+            fi
+          done
+        '''
+
+        println "${bold}Install Bundles and Update Databag: ${green}Commit and Push Databags changes to configuration repository ${reset}"
+        withCredentials([[$class: 'UsernamePasswordMultiBinding', credentialsId: '97c54a1a-01f7-44f1-88b8-b88740cd3d1a',
+        usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD']]) {
+          sh '''
+            set +x
+            git checkout master
+            cd chef
+            echo 'Git status is :'
+            git status --porcelain
+            if [[ `git status --porcelain` ]]; then
+              echo 'Pushing data bags changes to master'
+              git remote add central https://${GIT_USERNAME}:${GIT_PASSWORD}@gitlab.helios-aws.com/helios/ops/configuration.git
+              git config --global user.name "Helios Pipeline"
+              git config --global user.email dev.ops@heliosalliance.net
+              envs=( use1"${env_name}" )
+              for env in "${envs[@]}"; do
+                if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+                  git add data_bags/$env-${Stack_Name}/author.json
+                  git add data_bags/$env-${Stack_Name}/publish.json
+                fi
+                if [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+                  git add data_bags/$env-${Stack_Name}/helios-api.json
+                  git add data_bags/$env-${Stack_Name}/mule-esb.json
+                fi
+              done
+              git commit -m "Version bump to ${Version_ID} build ${BUILD_ID} on ${Stack_Name} ${env_name}"
+              git pull
+              git push origin master
+            fi
+          '''
+        }
+      }
+    }
+  }
+
+  stage("Deploying to ${Stack_Name}-${env_name}") {
+    withEnv(["PATH=/var/lib/jenkins/.rbenv/shims:/var/lib/jenkins/.rbenv/bin:/var/lib/jenkins/.rbenv/plugins/ruby_build/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin"]) {
+      dir('chef-server') {
+        wrap([$class: 'AnsiColorBuildWrapper']) {
+          // running converge (chef-client) on node through pushy job
+          if ( App_Name == "All" || App_Name == "AEM") {
+            println "${bold}Deploying to ${Stack_Name}-${env_name}: ${green}Deploying build ${Version_ID}-${BUILD_ID} on AEM Author and Publisher${reset}"
+            sh '#!/bin/sh +x\n' + 'BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife job start chef-client -s "${Chef_Node_Search}"'
+
+            println "${bold}Deploying to ${env_name}-Stream: ${green}Clearing cache on the Publisher${reset}"
+            sh '#!/bin/sh +x\n' + 'BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife job start dispatcher_cache_clearing -s "${Chef_Node_Search}"'
+          }
+
+          if ( App_Name == "All" || App_Name == "API") {
+            if (MULE_switch == true) {
+              println "${bold}Float Mule license by stopping it on ${Chef_shared_mule_license_Search} ${reset}"
+              sh '#!/bin/sh +x\n' + 'BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife job start stop-mule -s "${Chef_shared_mule_license_Search}"'
+            }
+            println "${bold}Deploying to ${Stack_Name}-${env_name}: ${green}Deploying build ${Version_ID}-${BUILD_ID} on Tomcat API and Mule${reset}"
+            sh '#!/bin/sh +x\n' + 'BUNDLE_GEMFILE=Gemfile_for_knife_pipeline bundle exec knife job start chef-client-helios-api -s "${Chef_Node_Search}"'
+          }
+        }
+      }
+    }
+  }
+
+  stage("Test: ${Stack_Name}-${env_name}") {
+    withEnv(["PATH=/var/lib/jenkins/.rbenv/shims:/var/lib/jenkins/.rbenv/bin:/var/lib/jenkins/.rbenv/plugins/ruby_build/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin"]) {
+      wrap([$class: 'AnsiColorBuildWrapper']) {
+        withCredentials([file(credentialsId: 'd1098693-4514-4e42-b52f-cb97075d3a10', variable: 'SECRET_FILE'),
+        string(credentialsId: 'd2931848-5fbb-4a2a-adee-232ebc4524f5', variable: 'SECRET_USER')]) {
+          sh '''
+            set +x
+
+            pass=$(knife data bag show -F json use1${env_name}-${Stack_Name} aem_credentials 2>/dev/null | jq .admin.password | tr -d '"')
+            if [ ! "$pass" ];then
+              pass="admin"
+            fi
+
+            nodename=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "hostname")
+            echo "${Bold}\nTest: ${Stack_Name}-${env_name}: ${Green} NodeName-$nodename${Reset}"
+
+            #### Testing Author
+            if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+              echo "${Bold}\nTest: ${Stack_Name}-${env_name}:${Green} Checking bundles to get version ${Version_ID}-${BUILD_ID} on Author${Reset}"
+
+              bundles=( "abres" "admin" "api-model" "tooling" "web" "webrender" )
+              for bundle in "${bundles[@]}"; do
+                output=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "curl -s -u admin:$pass http://localhost:4502/system/console/bundles/com.digitaslbi.helios.$bundle" | sed -n 's/.*\\(\\"Bnd-LastModified.*\\"\\),\\"Created-By.*/\\1/p')
+
+                if ! [[ $output =~ "BuildId: ${BUILD_ID}" && $output =~ "Bundle-Version: ${Version_ID}" ]]; then
+                  echo "${Red} --- The Snapshot doesn't match with Version and Build ID on Author --- ${Reset}"
+                  #exit 1
+                else
+                  echo "${Green} --- The com.digitaslbi.helios.$bundle ${Version_ID} - ${BUILD_ID} bundle on Author has been deployed --- ${Reset}"
+                fi
+              done
+            fi
+
+            #### Testing Publishers
+            if [[ ${App_Name} == "All" || ${App_Name} == "AEM" ]]; then
+              echo "${Bold}\nTest: ${Stack_Name}-${env_name}:${Green} Checking bundles to get version ${Version_ID}-${BUILD_ID} on Publisher${Reset}"
+
+              bundles=( "abres" "admin" "api-model" "tooling" "web" "webrender" )
+              for bundle in "${bundles[@]}"; do
+                output=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "curl -s -u admin:$pass http://localhost:4503/system/console/bundles/com.digitaslbi.helios.$bundle" | sed -n 's/.*\\(\\"Bnd-LastModified.*\\"\\),\\"Created-By.*/\\1/p')
+
+                if ! [[ $output =~ "BuildId: ${BUILD_ID}" && $output =~ "Bundle-Version: ${Version_ID}" ]]; then
+                  echo "${Red} --- The Snapshot doesn't match with Version and Build ID on Publisher --- ${Reset}"
+                  #exit 1
+                else
+                  echo "${Green} --- The com.digitaslbi.helios.$bundle ${Version_ID} - ${BUILD_ID} bundle on Publisher has been deployed --- ${Reset}"
+                fi
+              done
+            fi
+
+            #### Testing Helios-API
+            if [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+              echo "${Bold}\nTest: ${Stack_Name}-${env_name}:${Green} Checking version ${Version_ID}-${BUILD_ID} on Helios-API${Reset}"
+              nodenames=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "hostname")
+
+              while read nodename; do
+                nodename=$(echo $nodename | tr -d '\r' | awk '{print $2}')
+                data_bag_items=$(knife exec helios-pipeline/get_databag_items.rb use1${env_name}-${Stack_Name} helios-api "name")
+                while read itemname; do
+                  if ! [[ $itemname == "helios-api-offers-dma" ]]; then
+                    healthcheck=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "name:$nodename" "curl -s http://localhost:8080/$itemname/healthcheck && echo")
+                    if ! [[ $healthcheck =~ ${Version_ID}.build-${BUILD_ID} ]]; then
+                      echo "${Red} --- $itemname: The Build doesn't match with Version and Build ID --- ${Reset}"
+                      #### exit 1
+                    else
+                      echo "${Green} --- $itemname: The package ${Version_ID} - ${BUILD_ID} has been deployed --- ${Reset}"
+                    fi
+                  fi
+                done <<< "$data_bag_items"
+              done <<< "$nodenames"
+            fi
+
+            #### Testing Mule
+            output=$(knife data bag show use1${env_name}-${Stack_Name} mule-esb -F json 2>/dev/null | jq .mule_applications)
+            if ! [[ $output =~ "[]" ]]; then
+              if [[ ${App_Name} == "All" || ${App_Name} == "API" ]]; then
+                nodename=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "hostname")
+                data_bag_items=$(knife exec helios-pipeline/get_databag_items.rb use1${env_name}-${Stack_Name} mule-esb "name")
+
+                echo "${Bold}\nTest: ${Stack_Name}-${env_name}:${Green} Checking version ${Version_ID}-${BUILD_ID} on Mule${Reset}"
+
+                while read itemname; do
+                  output=$(knife ssh -a ipaddress -i ${SECRET_FILE} -x ${SECRET_USER} "${Chef_Node_Search}" "grep -r '${Version_ID}.build-${BUILD_ID}' /opt/mule/apps/$itemname" | cut -d = -f2)
+
+                  if ! [[ $output =~ ^${Version_ID}.build-${BUILD_ID} ]]; then
+                    echo "${Red} --- $itemname: The Build doesn't match with Version and Build ID --- ${Reset}"
+                    #### exit 1
+                  else
+                    echo "${Green} --- $itemname: The package ${Version_ID} - ${BUILD_ID} has deployed --- ${Reset}"
+                  fi
+                done <<< "$data_bag_items"
+              fi
+            fi
+          '''
+        }
+      }
+    }
+  }
+}
+catch (e) {
+   // If there was an exception thrown, the build failed
+   currentBuild.result = "FAILED"
+   throw e
+ } finally {
+   // Success or failure, always send notifications
+   notifyBuild(currentBuild.result)
+ }
+  step([$class: 'WsCleanup'])
+  deleteDir()
+}
+
+def notifyBuild(String buildStatus = 'STARTED') {
+
+ // build status of null means successful
+ buildStatus =  buildStatus ?: 'SUCCESSFUL'
+
+ // Default values
+ def colorName = 'RED'
+ def colorCode = '#FF0000'
+ def subject = "${buildStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+ def summary = "${subject} (${env.BUILD_URL})"
+ def details = """<p>STARTED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
+   <p>Check console output at "<a href="${env.BUILD_URL}">${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>"</p>"""
+
+ // Override default values based on build status
+ if (buildStatus == 'STARTED') {
+   color = 'YELLOW'
+   colorCode = '#FFFF00'
+ } else if (buildStatus == 'SUCCESSFUL') {
+   color = 'GREEN'
+   colorCode = '#00FF00'
+ } else {
+   color = 'RED'
+   colorCode = '#FF0000'
+ }
+
+}

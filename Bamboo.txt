@@ -1,0 +1,249 @@
+Atlassian Bamboo version 6.7.1 8085
+GitLab Community Edition 11.3.4
+Bitbucket 5.14
+Jenkins 2.150
+Chef 12.21
+Ansible 2.2
+puppet 5.5.1
+
+Apigee: API Proxy, Cache, Key management
+Author: Developers are done changes
+Publisher: End users accesses the website content
+Dispatcher: HTTP server
+Brocade(VTM): Virtual traffic manager, cluster, load balancing, Web application firwall, DNS
+
+AWS servers are in three regins (US north verginia,tokiyo APAC, EU Ireland)
+tomcat 8 sevrers in EU
+
+* Lower ENV
+	BAE DEV 1,2,3,INT,QA
+	HF-INT/QA
+* Higher ENV
+	Staging
+	Hotfix
+	UAT
+	Production
+ 
+* Bamboo windows agent Installation
+
+	54663 inbound on Bamboo server 
+
+* Jenkins  plugin
+	Git,Pipeline-Groovy,Amazon EC2 Plugin,Amazon webserver SDK,Docker Pipeline,Job DSL,Pipeline
+	How will you secure Jenkins?
+
+	1) Ensure global security is on.
+	2) Ensure that Jenkins is integrated with my company’s user directory with appropriate plugin.
+	3) Ensure that matrix/Project matrix is enabled to fine tune access.
+	4) Automate the process of setting rights/privileges in Jenkins with custom version controlled script.
+	5) Limit physical access to Jenkins data/folders.
+	6) Periodically run security audits on same.
+
+	Explain how you can deploy a custom build of a core plugin?
+	Below are the steps to deploy a custom build of a core plugin:
+
+	1) Stop Jenkins.
+	2) Copy the custom HPI to $Jenkins_Home/plugins.
+	3) Delete the previously expanded plugin directory.
+	4) Make an empty file called <plugin>.hpi.pinned.
+	5) Start Jenkins.
+
+* Bamboo:-
+	
+	Helios Main build:
+		Build & Unit test: Checkout & Maven(Clean deploy)
+		Build ID Assets: Checkout,Script & Maven
+		
+		clean deploy --settings /home/bamboo/settings.bamboo.xml -DskipITs -B -DbambooBuildNumber=${bamboo.buildNumber} -Dmaven.clover.skip=true 
+		-DbuildId=${bamboo.buildNumber} -DsnapshotRepository=${bamboo.snapshotRepository} -DbuildType=${bamboo.build_type}
+		
+	Apigee Deployment:
+		Apigee Conf Deployment: Code Checkout,Scripts & Maven(Clean deploy)
+		Apigee Proxy Deployment: Code Checkout,Scripts & Maven
+		Apigee cache clear: Scripts & Maven to clear cache
+		
+## To find average
+awk '{ total +=$2; count++ } END {print total/count}' abc
+
+## To find comment from last day
+git log -p --since="1 days ago" -- a/a.txt
+
+##Docker
+RUN:A run instruction is used to execute any commands,RUN executes command(s) in a new layer and creates a new image. 
+FROM: The FROM command sets the base image for the rest of the instructions.
+MAINTAINER: The MAINTAINER command tells who is the author of the generated images.
+CMD: The CMD instruction takes various forms and when it is used individually in the file without the ENTRYPOINT 
+ENTRYPOINT configures a container that will run as an executable.
+ENV: to set environment in dockerfile
+COPY: COPY is the simplest of the two, since it just copies a file or a directory from your host to your image.
+ADD: ADD does this too, but also has some more magical features like extracting TAR files or fetching files from remote URLs. In order to reduce the complexity of your Dockerfile and prevent some unexpected behavior, it's usually best to always use COPY to copy your files.
+
+###Chef
+package 'httpd' do
+  action :install
+end
+
+service 'httpd' do
+  action [ :enable, :start ]
+end
+
+cookbook_file "/var/www/html/index.html" do
+  source "index.html"
+  mode "0644"
+end
+
+execute 'reload_firewall' do
+  command '/usr/bin/firewall-cmd --reload'
+  ignore_failure true
+end
+
+#knife cookbook upload httpd
+#knife cookbook list
+#knife cookbook delete cookbook_name
+#chef generate cookbook httpd
+#knife node run_list add chefclient.itzgeek.local httpd
+
+##Recipe
+It can be defined as a collection of attributes which are used to manage the infrastructure.
+These attributes which are present in the recipe are used to change the existing state or setting a particular infrastructure node.
+##Cookbook
+A cookbook is a collection of recipes.
+##Attribute
+They are basically settings.
+##Templates
+They are similar to files, but they are not static. Template files end with the .ebr extension, which means they contain embedded Ruby.
+##Metadata.rb
+It is used to manage the metadata about the package, it provides information that helps Chef Infra Client and Server correctly deploy cookbooks to each node
+##Berksfile
+Berksfile is the most crucial component of Berkshelf! It's just like metadata for Chef.
+##Gemfile
+A Gemfile is a file we create which is used for describing gem dependencies for Ruby programs.
+
+
+*******Ansible********
+---
+- hosts: webservers
+  vars:
+    http_port: 80
+    max_clients: 200
+  remote_user: root
+  tasks:
+  - name: ensure apache is at the latest version
+    yum:
+      name: httpd
+      state: latest
+  - name: write the apache config file
+    template:
+      src: /srv/httpd.j2
+      dest: /etc/httpd.conf
+    notify:
+    - restart apache
+  - name: ensure apache is running
+    service:
+      name: httpd
+      state: started
+  handlers:
+    - name: restart apache
+      service:
+        name: httpd
+        state: restarted
+		
+************Puppet***********
+user { 'mitchell':
+  ensure     => present,
+  uid        => '1000',
+  gid        => '1000',
+  shell      => '/bin/bash',
+  home       => '/home/mitchell'
+}
+
+*********************************
+Azure VSTS
+	Deployment Mode:
+		1) Incremental 2) Complete 3) Validation only
+	Performance:
+		1) Standard 2) Premium
+	Replication
+	
+	
+Databases., aurura (Mysql & postgress)
+ EC2, VPC, CloudWatch, CloudFront, ElastikBeanstalk, IAM, Auto Scaling, S3, Cloudformation, Glacier, CloudTrail, Rout53, SNS,SQS,SES
+ 
+ 1) number of ip we can use for EC2? its depends on instance type
+2) DNS & hostname policy disabled or enabled by default? hostname is disabled by default
+3) EC2 checks fails then?
+4) how to encrypt EBS volume? can we do on the fly
+take snapshot of volume, copy of that snapshot and provide key using KMS
+5) Add a volume on the fly?
+	Root Volume: Extend the volume,Check the filesystem(file -s /dev/xvd*),check partitions(lsblk),To extend the size (growpart /dev/nvme0n1 1 ), for ext4(growpart /dev/xvda 1)
+				resize2fs /dev/xvda1,for xfs(xfs_growfs -d /data)
+	extra volume: add,fdisk -l
+
+	1. Core dumps filling up the disk.
+Check with:
+find / -xdev -name core -ls -o  -path "/lib*" -prune
+2. Unnecessary packages filling up the space.
+The following command will remove all automatically installed packages, which aren't required any more. (Because the dependency which force the installation in the past has been removed.)
+
+apt-get autoremove --purge 
+3. Outdated kernel packages
+Check how many kernel packages are installed, and remove outdated kernel versions. You may investigate the current situation with:
+
+dpkg -l "linux*{tools}*" |grep ^.i
+4. Hidden storage
+Other mounted partitions may hide used storage. To investigate this mount the root file system temporary on a second location:
+
+mkdir /tmp/2ndRoot
+mount /dev/sda1 /tmp/2ndRoot
+
+rpm -i --nodeps [package].rpm
+
+https://docs.ansible.com/ansible/latest/modules/user_module.html
+
+https://docs.ansible.com/ansible/latest/user_guide/playbooks_reuse_roles.html
+
+To find symlink
+[root@ip-10-15-16-227 tmp]# find . -type l -ls
+ 20917    0 lrwxrwxrwx   1 root     root            3 Jan 23 09:24 ./xyz -> abc
+
+replace line with a word
+[root@ip-10-15-16-227 tmp]# sed -e '/hello/c\your text' abc
+
+ 
+ 
+1) one VPC is in one region and another in different resion, how can we connect from Ec2 server to another
+
+Ans:- VPC peering is available/possible in inter region and cross account.
+
+2) How to connect from Ec2 linux server to S3 bucket
+
+Ans: AWSCLI to upload the file
+
+3) Default graphs or monitoring available in cloudwatch
+
+Ans: CPU utilization, Disk Read/Writes, Network IN/OUT,CPU Credit
+
+4) Can we change instance type? How? on the fly possible
+
+Ans: On the fly not possible, Shutdown the instance-->Action-->Change Instance type
+
+5) How will you guide application team for best architecture.(Which services you will use)
+	
+********************GitLab*********
+To reset gitlab password
+
+https://docs.gitlab.com/ee/security/reset_root_password.html
+
+Gitlab runner installation
+
+https://docs.gitlab.com/runner/install/linux-manually.html
+
+Gitlab runner ragistration
+
+https://docs.gitlab.com/runner/register/
+
+URL
+
+http://localhost:8000/admin/runners
+ 
+***************

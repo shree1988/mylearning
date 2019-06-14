@@ -1,0 +1,164 @@
+image: $myprojectTOOLS_DOCKER_REGISTRY/myprojecttools-docker-build:myproject-app-build-v2
+
+variables:
+  MAVEN_OPTS: "-Xms512m -Xmx3G" 
+  BUILD_OPTS: "-DbambooBuildNumber=${CI_PIPELINE_IID} -DbuildId=${CI_PIPELINE_IID}" 
+
+stages:
+ - build
+ - package
+ - deploy
+
+.build_template:
+  stage: build
+  tags:
+   - myproject
+   - docker
+
+build-id:
+  extends: .build_template
+  script:
+   - cd myproject-id
+   - mvn install ${BUILD_OPTS}
+
+build-parent:
+  extends: .build_template
+  script:
+   - cd myproject-parent
+   - mvn clean test-compile ${BUILD_OPTS}
+   - mvn install -T 1C -DskipITs -Dmaven.clover.skip=true ${BUILD_OPTS}
+
+code-quality:
+  extends: .build_template
+  script:
+    - cd myproject-parent
+    - mvn test clover:clover sonar:sonar -Dmaven.clover.failOnViolation=false -Dmaven.clover.report.xml=true
+    - cd ../myproject-id
+    - POM_VERSION=$(mvn -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec)
+    - sonar-scanner -Dsonar.projectKey=com.digitaslbi.myproject:myproject-id-parent -Dsonar.projectName="myproject ID Parent" -Dsonar.sources=. -Dsonar.projectVersion=${POM_VERSION}
+  artifacts:
+   reports:
+     junit: "*/*/*/target/surefire-reports/TEST-*.xml"
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'develop'
+
+start-package:
+  image: registry.hub.docker.com/library/alpine
+  stage: build
+  when: manual
+  allow_failure: false
+  variables:
+    GIT_STRATEGY: none
+  tags:
+   - myproject
+   - docker
+  script:
+   - echo start build number = ${CI_PIPELINE_IID}
+  except:
+    - develop
+    - /^release.*/
+    - master
+
+
+package:
+  stage: package
+  tags:
+   - myproject
+   - docker
+  script:
+    - parallelcmd "mvn clean deploy -f myproject-parent/pom.xml -Dmaven.test.skip.exec=true -Dmaven.clover.skip=true ${BUILD_OPTS}" "mvn clean deploy -f myproject-id/pom.xml ${BUILD_OPTS}"
+
+.deploy:
+  tags:
+    - myproject
+    - docker
+  stage: deploy
+  script:
+    - export V=$(mvn -f myproject-parent/pom.xml -q  -Dexec.executable=echo  -Dexec.args='${project.version}' --non-recursive  exec:exec)
+    - curl -X POST  -F "Version_ID=${V}" -F "App_Name=All" -F "Build_ID=${CI_PIPELINE_IID}" https://gitlab:${PIPELINE_TOKEN}@pipeline.myproject-aws.com/job/${ENV}/buildWithParameters
+    - echo deploy ${V}-${CI_PIPELINE_IID}
+
+demo1:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "demo-1"
+
+dev1bae:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "BAE-Dev1"
+
+dev2bae:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "BAE-Dev2"
+
+dev3bae:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "BAE-Dev3"
+
+qabae:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "BAE-QA"
+
+intbae:
+  extends: .deploy
+  only:
+    - develop
+  variables:
+    ENV: "BAE-INT"
+
+inthf:
+  extends: .deploy
+  when: manual
+  variables:
+    ENV: "HF-INT"
+
+    
+ ******ANother
+ 
+ 
+
+# see https://docs.gitlab.com/ce/ci/yaml/README.html for all available options
+
+# you can delete this line if you're not using Docker
+image: localhost:5000/gitlab-runner
+
+stages:
+ - linting
+ - kitchen
+ - build
+ - deploy
+
+linting:
+  stage: build
+  script:
+    - echo "Do your build here"
+   
+kitchen:
+  stage: test
+  script: 
+    - echo "Do a test here"
+    - echo "For example run a test suite"
+   
+build:
+  stage: test
+  script: 
+    - echo "Do another parallel test here"
+    - echo "For example run a lint test"
+   
+deploy:
+  stage: deploy
+  script:
+    - echo "Do your deploy here"
+
